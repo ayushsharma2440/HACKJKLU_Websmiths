@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crime Mapping</title>
+    <style>
+        * { padding: 0; margin: 0; box-sizing: border-box; }
+        body { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            font-family: 'Arial', sans-serif; 
+            background-color: #1e1e2f;
+            color: #fff;
+            padding: 20px;
+        }
+        h2 {
+            color: #ffcc00;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        #google-map { 
+            border: 2px solid #ffcc00; 
+            width: 700px; 
+            height: 500px; 
+            margin-top: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 10px rgba(255, 204, 0, 0.5);
+        }
+        form { 
+            margin-top: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            background: #2c2c3e; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(255, 204, 0, 0.3);
+        }
+        input, textarea, select, button { 
+            padding: 10px; 
+            font-size: 16px; 
+            border: none;
+            border-radius: 5px;
+        }
+        input, textarea, select {
+            background-color: #3b3b5c;
+            color: white;
+        }
+        button {
+            background-color: #ffcc00;
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover {
+            background-color: #e6b800;
+        }
+        #exclusion-zones-table {
+            margin-top: 20px;
+            width: 700px;
+            background: #2c2c3e;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(255, 204, 0, 0.3);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background-color: #ffcc00;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <h2>Police FIR Entry</h2>
+    <form id="firForm">
+        <input type="text" id="crimeType" placeholder="Crime Type" required>
+        <select id="severity" required>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+        </select>
+        <textarea id="details" placeholder="Enter details about the crime" required></textarea>
+        <input type="datetime-local" id="dateTime" required>
+        <button type="submit">Add FIR</button>
+    </form>
+    <div id="google-map"></div>
+    <div id="exclusion-zones-table">
+        <h3>High Priority Zones</h3>
+        <table id="exclusionTable">
+            <thead>
+                <tr>
+                    <th>Crime Type</th>
+                    <th>Severity</th>
+                    <th>Details</th>
+                    <th>Date & Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be added dynamically -->
+            </tbody>
+        </table>
+    </div>
+
+    <script defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD2j7xtlYEQ1MPDWhghT93_wMpAidy3uaA&libraries=geometry&callback=initMap"></script>
+    <script>
+        let map;
+        let markers = [];
+        let exclusionZones = [];
+        let selectedLocation = null;
+        let firData = [];
+
+        function initMap() {
+            const Centermap = { lat: 22.6219044, lng: 80.2496707 };
+            map = new google.maps.Map(document.getElementById('google-map'), {
+                center: Centermap,
+                zoom: 5
+            });
+            
+            map.addListener("click", (event) => {
+                selectedLocation = event.latLng;
+                document.getElementById("crimeType").focus();
+            });
+        }
+
+        document.getElementById('firForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            if (!selectedLocation) {
+                alert("Please select a location on the map by clicking.");
+                return;
+            }
+            const crimeType = document.getElementById('crimeType').value;
+            const severity = document.getElementById('severity').value;
+            const details = document.getElementById('details').value;
+            const dateTime = document.getElementById('dateTime').value;
+            addMarker(selectedLocation, crimeType, severity, details, dateTime);
+        });
+
+        function addMarker(position, crimeType, severity, details, dateTime) {
+            if (isInsideExclusionZone(position)) {
+                alert("This area is marked as an exclusion zone due to high crime concentration.");
+                return;
+            }
+
+            const color = severity === 'high' ? 'red' : severity === 'medium' ? 'orange' : 'yellow';
+            const marker = new google.maps.Marker({
+                position,
+                map,
+                title: crimeType,
+                icon: { url: `http://maps.google.com/mapfiles/ms/icons/${color}-dot.png` }
+            });
+            markers.push(marker);
+
+            // Create InfoWindow content with custom styling
+            const infoWindowContent = `
+                <div style="background-color: #2c2c3e; color: #fff; padding: 10px; border-radius: 5px;">
+                    <strong style="color: #ffcc00;">Crime Type:</strong> ${crimeType}<br>
+                    <strong style="color: #ffcc00;">Severity:</strong> ${severity}<br>
+                    <strong style="color: #ffcc00;">Details:</strong> ${details}<br>
+                    <strong style="color: #ffcc00;">Date & Time:</strong> ${dateTime}
+                </div>
+            `;
+
+            // Attach InfoWindow to the marker
+            const infoWindow = new google.maps.InfoWindow({
+                content: infoWindowContent
+            });
+
+            marker.addListener("click", () => {
+                // Close any previously opened InfoWindow
+                markers.forEach(m => {
+                    if (m.infoWindow) m.infoWindow.close();
+                });
+                // Open the InfoWindow for the clicked marker
+                infoWindow.open(map, marker);
+                marker.infoWindow = infoWindow; // Store reference to the InfoWindow
+            });
+
+            // Store FIR data
+            firData.push({ position, crimeType, severity, details, dateTime });
+            checkForExclusionZones();
+        }
+
+        function checkForExclusionZones() {
+            for (let i = 0; i < markers.length; i++) {
+                let count = 0;
+                let center = markers[i].getPosition();
+                for (let j = 0; j < markers.length; j++) {
+                    if (google.maps.geometry.spherical.computeDistanceBetween(center, markers[j].getPosition()) <= 20000) {
+                        count++;
+                    }
+                }
+                if (count >= 5 && !isInsideExclusionZone(center)) {
+                    createExclusionZone(center);
+                }
+            }
+        }
+
+        function createExclusionZone(center) {
+            const exclusionCircle = new google.maps.Circle({
+                center: center,
+                radius: 20000, // Reduced to 20 km (20,000 meters)
+                strokeColor: "#FF0000",
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: "#FF0000",
+                fillOpacity: 0.35,
+                map: map
+            });
+            exclusionZones.push(exclusionCircle);
+            updateExclusionTable(center);
+        }
+
+        function isInsideExclusionZone(position) {
+            return exclusionZones.some(zone => {
+                return google.maps.geometry.spherical.computeDistanceBetween(position, zone.getCenter()) <= 20000;
+            });
+        }
+
+        function updateExclusionTable(center) {
+            const tableBody = document.querySelector("#exclusionTable tbody");
+            tableBody.innerHTML = ""; // Clear existing rows
+
+            firData.forEach(fir => {
+                if (google.maps.geometry.spherical.computeDistanceBetween(center, fir.position) <= 20000) {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${fir.crimeType}</td>
+                        <td>${fir.severity}</td>
+                        <td>${fir.details}</td>
+                        <td>${fir.dateTime}</td>
+                    `;
+                    tableBody.appendChild(row);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
